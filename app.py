@@ -1,21 +1,37 @@
 from flask import Flask
 import os, time, threading, asyncio
 from datetime import datetime
-
-# ===== FIX - Is se reason_phrase error khatam hoga =====
 import httpx
+
+# ===== FINAL FIX FOR reason_phrase - Auto Patch =====
 try:
-    httpx.Response.reason_phrase = property(lambda self: "OK")
-except:
-    pass
-# =======================================================
+    # 1. httpx ko patch karo
+    if not hasattr(httpx.Response, "reason_phrase"):
+        httpx.Response.reason_phrase = property(lambda self: "OK")
+    # 2. pyquotex library ke andar se reason_phrase ko fix karo
+    import pathlib
+    import pyquotex
+    base_path = os.path.dirname(pyquotex.__file__)
+    for r, d, f in os.walk(base_path):
+        for file in f:
+            if file.endswith(".py"):
+                fp = os.path.join(r, file)
+                try:
+                    content = open(fp, 'r', encoding='utf-8', errors='ignore').read()
+                    if 'reason_phrase' in content:
+                        content = content.replace('reason_phrase', 'reason')
+                        open(fp, 'w', encoding='utf-8').write(content)
+                except:
+                    pass
+except Exception as e:
+    print(f"Patch info: {e}")
+# =====================================================
 
 from pyquotex.stable_api import Quotex
 
 app = Flask(__name__)
 bot_log = []
 is_running = True
-
 EMAIL = os.environ.get("QUOTEX_EMAIL")
 PASSWORD = os.environ.get("QUOTEX_PASS")
 
@@ -24,49 +40,36 @@ def log(msg):
     full = f"{t} - {msg}"
     bot_log.append(full)
     print(full)
-    if len(bot_log) > 100:
-        bot_log.pop(0)
+    if len(bot_log) > 100: bot_log.pop(0)
 
 def check_candles(candles):
     red_count = 0
     for c in candles[-6:]:
         try:
-            if isinstance(c, dict):
-                if c.get('close', 0) < c.get('open', 0):
-                    red_count += 1
-            elif isinstance(c, (list, tuple)) and len(c) > 4:
-                if c[4] < c[1]:
-                    red_count += 1
-        except:
-            continue
+            if isinstance(c, dict) and c.get('close', 0) < c.get('open', 0): red_count += 1
+            elif isinstance(c, (list, tuple)) and len(c) > 4 and c[4] < c[1]: red_count += 1
+        except: continue
     return red_count
 
 async def trading_loop_async():
     log("بوٹ شروع ہو رہا ہے...")
     if not EMAIL or not PASSWORD:
-        log("❌ EMAIL / PASS Render Environment me set karo!")
+        log("❌ EMAIL / PASS Render > Environment me set karo!")
         return
-
     client = Quotex(email=EMAIL, password=PASSWORD)
-    
     try:
         check, reason = await client.connect()
         if not check:
             log(f"❌ لاگن فیل: {reason}")
             return
-        
         balance = await client.get_balance()
         log(f"✅ لاگن ہو گیا - Balance: {balance}")
-        log("USDBRL + USDPKR چیک ہو رہے ہیں...")
-
         assets = ["USDBRL_otc", "USDBRL", "USDPKR_otc"]
-        
         while is_running:
             for asset in assets:
                 try:
                     candles = await client.get_candles(asset, 60, 10, time.time())
-                    if not candles:
-                        continue
+                    if not candles: continue
                     reds = check_candles(candles)
                     log(f"{asset} - {reds} RED")
                     if reds >= 6:
@@ -80,8 +83,7 @@ async def trading_loop_async():
     except Exception as e:
         log(f"Main Error: {e}")
 
-def trading_loop():
-    asyncio.run(trading_loop_async())
+def trading_loop(): asyncio.run(trading_loop_async())
 
 @app.route('/')
 def home():
@@ -89,15 +91,11 @@ def home():
     return f"""<html><head><meta name="viewport" content="width=device-width, initial-scale=1">
     <style>body{{background:#0f172a;color:#fff;font-family:Arial;padding:15px;text-align:center}}
     .box{{background:#1e293b;padding:15px;border-radius:12px;max-width:600px;margin:auto;text-align:left}}
-    .log{{background:#0b1120;padding:10px;border-radius:8px;height:500px;overflow:auto;font-size:13px;line-height:22px}}</style></head>
-    <body><h2>🤖 حماد آٹو بوٹ - REAL</h2>
-    <p style="color:#22c55e">Email: {EMAIL} | Quotex: OK</p>
+    .log{{background:#0b1120;padding:10px;border-radius:8px;height:500px;overflow:auto;font-size:13px}}</style></head>
+    <body><h2>🤖 حماد آٹو بوٹ - REAL</h2><p style="color:#22c55e">Email: {EMAIL}</p>
     <p>USDBRL + USDPKR | 6 RED -> DOWN AUTO TRADE</p>
-    <div class="box"><b>لائیو لاگ:</b><br><br><div class="log">{logs}</div></div>
-    <br><a href="/" style="color:#38bdf8">Refresh</a></body></html>"""
+    <div class="box"><b>لائیو لاگ:</b><br><br><div class="log">{logs}</div></div><br><a href="/" style="color:#38bdf8">Refresh</a></body></html>"""
 
 threading.Thread(target=trading_loop, daemon=True).start()
-
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
