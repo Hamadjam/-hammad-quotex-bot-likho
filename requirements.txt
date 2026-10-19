@@ -1,3 +1,5 @@
 flask
 gunicorn
-quotexapi
+requests
+websocket-client
+git+https://github.com/cleitonleites/quotexapi.git
