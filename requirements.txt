@@ -1,4 +1,5 @@
 flask
 gunicorn
 requests
-quotexpy
+websocket-client
+git+https://github.com/cleitonleonel/pyquotex.git

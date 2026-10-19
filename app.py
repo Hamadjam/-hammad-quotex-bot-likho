@@ -2,20 +2,13 @@ from flask import Flask
 import os, time, threading
 from datetime import datetime
 
-HAS_QUOTEX = False
-import_error = ""
-Quotex = None
-
 try:
-    from quotexpy.new import Quotex
+    from quotexapi.stable_api import Quotex
     HAS_QUOTEX = True
+    import_error = ""
 except Exception as e:
-    try:
-        from quotexpy.stable_api import Quotex
-        HAS_QUOTEX = True
-    except Exception as e2:
-        import_error = str(e) + " | " + str(e2)
-        HAS_QUOTEX = False
+    HAS_QUOTEX = False
+    import_error = str(e)
 
 app = Flask(__name__)
 bot_log = []
@@ -34,62 +27,49 @@ def log(msg):
 
 def check_candles(candles):
     red_count = 0
-    try:
-        for c in candles[-6:]:
-            if isinstance(c, dict):
-                o = c.get('open', 0)
-                cl = c.get('close', 0)
-            else:
-                o = c[1] if len(c) > 1 else 0
-                cl = c[4] if len(c) > 4 else 0
-            if cl < o:
+    for c in candles[-6:]:
+        try:
+            if c['close'] < c['open']:
                 red_count += 1
-    except:
-        pass
+        except:
+            continue
     return red_count
 
 def trading_loop():
     log("بوٹ شروع ہو رہا ہے...")
     if not EMAIL or not PASSWORD:
-        log("❌ EMAIL / PASS نہیں ملا! Render Environment میں ڈالیں")
+        log("❌ EMAIL / PASS نہیں ملا!")
         return
     if not HAS_QUOTEX:
-        log(f"❌ quotexpy install نہیں ہوئی: {import_error}")
+        log(f"❌ Import Fail: {import_error}")
         return
 
-    try:
-        client = Quotex(email=EMAIL, password=PASSWORD)
-        client.debug_ws_enable = False
-        check, reason = client.connect()
-        if not check:
-            log(f"❌ لاگن فیل: {reason}")
-            return
-        log(f"✅ لاگن ہو گیا - Balance: {client.get_balance()}")
-        log("USDBRL + USDPKR چیک ہو رہے ہیں...")
-
-        assets = ["USDBRL_otc", "USDBRL", "USDPKR_otc"]
-        while is_running:
+    client = Quotex(email=EMAIL, password=PASSWORD)
+    check, reason = client.connect()
+    if not check:
+        log(f"❌ لاگن فیل: {reason}")
+        return
+    
+    log(f"✅ لاگن ہو گیا - Balance: {client.get_balance()}")
+    assets = ["USDBRL_otc", "USDBRL", "USDPKR_otc"]
+    
+    while is_running:
+        try:
             for asset in assets:
-                try:
-                    candles = client.get_candles(asset, 60, 10, time.time())
-                    if not candles:
-                        continue
-                    reds = check_candles(candles)
-                    log(f"{asset} - آخری 6 میں {reds} RED")
-                    if reds >= 6:
-                        log(f"🔥 {asset} میں 6 RED! DOWN لگا رہا ہوں...")
-                        status, buy_info = client.buy(1, asset, "put", 60)
-                        if status:
-                            log(f"✅ ٹریڈ لگ گئی: {asset}")
-                        else:
-                            log(f"❌ ٹریڈ فیل: {buy_info}")
-                        time.sleep(65)
-                except Exception as e:
-                    log(f"{asset} Error: {e}")
+                candles = client.get_candles(asset, 60, 10, time.time())
+                if not candles:
+                    continue
+                reds = check_candles(candles)
+                log(f"{asset} - {reds} RED")
+                if reds >= 6:
+                    log(f"🔥 {asset} میں 6 RED! DOWN لگا رہا ہوں...")
+                    status, buy_info = client.buy(1, asset, "put", 60)
+                    log(f"{'✅ ٹریڈ لگی' if status else '❌ فیل'}: {buy_info}")
+                    time.sleep(65)
             time.sleep(5)
-    except Exception as e:
-        log(f"Loop Error: {e}")
-        time.sleep(10)
+        except Exception as e:
+            log(f"Error: {e}")
+            time.sleep(10)
 
 @app.route('/')
 def home():
@@ -98,12 +78,10 @@ def home():
     return f"""<html><head><meta name="viewport" content="width=device-width, initial-scale=1">
     <style>body{{background:#0f172a;color:#fff;font-family:Arial;padding:15px;text-align:center}}
     .box{{background:#1e293b;padding:15px;border-radius:12px;max-width:600px;margin:auto;text-align:left}}
-    .log{{background:#0b1120;padding:10px;border-radius:8px;height:500px;overflow:auto;font-size:13px;line-height:23px}}
-    </style></head><body>
-    <h2>🤖 حماد آٹو بوٹ - REAL</h2>
-    <p style="color:{color}">Email: {EMAIL if EMAIL else 'نہیں ملا'} | Quotex: {'OK - '+str(HAS_QUOTEX) if HAS_QUOTEX else 'Fail - '+import_error}</p>
-    <p>USDBRL + USDPKR | 6 RED -> DOWN AUTO TRADE</p>
-    <div class="box"><b>لائیو لاگ:</b><br><br><div class="log">{logs}</div></div>
+    .log{{background:#0b1120;padding:10px;border-radius:8px;height:500px;overflow:auto;font-size:13px}}</style></head>
+    <body><h2>🤖 حماد آٹو بوٹ - REAL</h2>
+    <p style="color:{color}">Email: {EMAIL} | Quotex: {'OK' if HAS_QUOTEX else 'Fail: '+import_error}</p>
+    <div class="box"><div class="log">{logs}</div></div>
     <br><a href="/" style="color:#38bdf8">Refresh</a></body></html>"""
 
 threading.Thread(target=trading_loop, daemon=True).start()
