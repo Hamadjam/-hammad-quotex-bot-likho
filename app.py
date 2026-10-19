@@ -2,6 +2,14 @@ from flask import Flask
 import os, time, threading, asyncio
 from datetime import datetime
 
+# ===== FIX - Is se reason_phrase error khatam hoga =====
+import httpx
+try:
+    httpx.Response.reason_phrase = property(lambda self: "OK")
+except:
+    pass
+# =======================================================
+
 from pyquotex.stable_api import Quotex
 
 app = Flask(__name__)
@@ -36,7 +44,7 @@ def check_candles(candles):
 async def trading_loop_async():
     log("بوٹ شروع ہو رہا ہے...")
     if not EMAIL or not PASSWORD:
-        log("❌ EMAIL / PASS نہیں ملا!")
+        log("❌ EMAIL / PASS Render Environment me set karo!")
         return
 
     client = Quotex(email=EMAIL, password=PASSWORD)
