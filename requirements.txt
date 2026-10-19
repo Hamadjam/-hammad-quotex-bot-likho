@@ -1,7 +1,4 @@
 flask
 gunicorn
 requests
-websocket-client
-pydantic==2.5.3
-playwright
-quotexpy==1.1.8
+quotexpy
