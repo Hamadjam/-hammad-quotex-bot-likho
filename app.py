@@ -3,13 +3,10 @@ import os, time, threading, asyncio
 from datetime import datetime
 import httpx
 
-# ===== FINAL FIX FOR reason_phrase - Auto Patch =====
+# ===== FINAL FIX - reason_phrase + Cloudflare 403 =====
 try:
-    # 1. httpx ko patch karo
     if not hasattr(httpx.Response, "reason_phrase"):
         httpx.Response.reason_phrase = property(lambda self: "OK")
-    # 2. pyquotex library ke andar se reason_phrase ko fix karo
-    import pathlib
     import pyquotex
     base_path = os.path.dirname(pyquotex.__file__)
     for r, d, f in os.walk(base_path):
@@ -18,11 +15,16 @@ try:
                 fp = os.path.join(r, file)
                 try:
                     content = open(fp, 'r', encoding='utf-8', errors='ignore').read()
+                    changed = False
                     if 'reason_phrase' in content:
                         content = content.replace('reason_phrase', 'reason')
+                        changed = True
+                    if 'quotex.com' in content:
+                        content = content.replace('quotex.com', 'qxbroker.com')
+                        changed = True
+                    if changed:
                         open(fp, 'w', encoding='utf-8').write(content)
-                except:
-                    pass
+                except: pass
 except Exception as e:
     print(f"Patch info: {e}")
 # =====================================================
@@ -61,7 +63,9 @@ async def trading_loop_async():
         check, reason = await client.connect()
         if not check:
             log(f"❌ لاگن فیل: {reason}")
-            return
+            log("10 min baad retry karunga (Cloudflare block)")
+            await asyncio.sleep(600) # 10 min wait for Cloudflare
+            return await trading_loop_async()
         balance = await client.get_balance()
         log(f"✅ لاگن ہو گیا - Balance: {balance}")
         assets = ["USDBRL_otc", "USDBRL", "USDPKR_otc"]
