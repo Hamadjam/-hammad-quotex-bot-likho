@@ -1,6 +1,6 @@
 flask
 gunicorn
 httpx==0.24.1
-pyquotex
 requests
 websockets==10.4
+git+https://github.com/cleitonleonel/pyquotex.git
